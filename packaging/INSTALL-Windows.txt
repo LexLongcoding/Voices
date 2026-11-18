@@ -1,0 +1,38 @@
+VOICES - Windows (64-bit)
+=========================
+
+WHAT'S IN HERE
+  Voices.vst3      the instrument: choir, vocal synth and vocoder played from MIDI,
+                   with a side-chain input for your voice (vocoder / auto-tune).
+  Voices FX.vst3   the same engine as an insert effect: put it on a vocal track for
+                   auto-tune and the voice changer (it also accepts MIDI).
+  Voices.exe       standalone app: sing into your microphone, play the on-screen keys
+                   or a MIDI keyboard, hear everything live.
+
+VST3 PLUGINS
+  1. Copy BOTH "Voices.vst3" and "Voices FX.vst3" folders to:
+       C:\Program Files\Common Files\VST3\
+     (Windows will ask for administrator permission - click Continue.)
+  2. In your DAW, rescan plugins. "Voices" appears as an instrument,
+     "Voices FX" as an effect.
+
+STANDALONE (hear yourself live)
+  Double-click Voices.exe - no install needed.
+  1. Click "Options" (top-left) -> "Audio/MIDI Settings...":
+       - pick your audio interface (ASIO or "Windows Audio (Exclusive Mode)" for low latency)
+       - pick your microphone input
+       - tick your MIDI keyboard under "Active MIDI inputs" (optional)
+  2. JUCE mutes the input at first to avoid feedback ("Audio input is muted...").
+     Use HEADPHONES, then click "Settings..." on that yellow bar and untick "Mute audio input".
+
+  Windows may show "Windows protected your PC" the first time, because the app
+  isn't signed with a paid code-signing certificate. Click "More info" ->
+  "Run anyway". This only happens once.
+
+PATCHES
+  Your saved patches live in  %APPDATA%\Voices Synth\Patches
+  The Standalone and both plugins share the same patches.
+
+LICENSE
+  Voices is free, open-source software under the GNU AGPL v3.0 or later
+  (see LICENSE.txt).

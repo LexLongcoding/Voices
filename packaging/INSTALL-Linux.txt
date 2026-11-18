@@ -1,0 +1,24 @@
+VOICES - Linux (x86_64)
+=======================
+
+VST3 PLUGINS
+  mkdir -p ~/.vst3
+  cp -r Voices.vst3 "Voices FX.vst3" ~/.vst3/
+  Rescan plugins in your DAW (Reaper, Bitwig, Ardour...).
+    Voices     = instrument (choir / vocal synth / vocoder from MIDI, side-chain voice input)
+    Voices FX  = insert effect for vocal tracks (auto-tune, voice changer; also takes MIDI)
+
+STANDALONE
+  ./Voices
+  Options -> Audio/MIDI Settings: choose ALSA or JACK, your microphone input and
+  your MIDI keyboard. Use headphones, then untick "Mute audio input" (Settings... on
+  the yellow bar) to hear yourself live.
+
+  Needs: ALSA (libasound2), FreeType, X11 - present on any desktop distro.
+  JACK is used if installed.
+
+PATCHES
+  ~/.config/Voices Synth/Patches
+
+LICENSE
+  GNU AGPL v3.0 or later - see LICENSE.txt

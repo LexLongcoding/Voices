@@ -1,0 +1,128 @@
+# Builds Voices on GitHub's machines - no compiler needed on your PC.
+#   * Every push: Windows + Linux builds you can download from the run's "Artifacts".
+#   * To publish a release: Actions tab -> "Build Voices" -> "Run workflow", type a
+#     version such as v0.9.0 in "Release version", and run. (Pushing a v* tag works too.)
+name: Build Voices
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to publish, e.g. v0.9.0 (leave empty for just a test build)'
+        required: false
+        default: ''
+
+
+permissions:
+  contents: write   # needed to publish releases on tags
+
+jobs:
+  windows:
+    name: Windows (VST3 + Standalone)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        # No -G: CMake picks the newest Visual Studio on the runner (2022, 2026, ...)
+        run: cmake -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "Voices-Windows"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item -Recurse build/Voices_artefacts/Release/VST3/Voices.vst3 $out/
+          Copy-Item -Recurse "build/VoicesFX_artefacts/Release/VST3/Voices FX.vst3" $out/
+          Copy-Item build/Voices_artefacts/Release/Standalone/Voices.exe $out/
+          Copy-Item packaging/INSTALL-Windows.txt $out/
+          Copy-Item LICENSE $out/LICENSE.txt
+          Copy-Item THIRD-PARTY-NOTICES.md $out/
+          Copy-Item docs/Voices-User-Manual.pdf $out/
+          Compress-Archive -Path "$out/*" -DestinationPath "$out.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Voices-Windows
+          path: Voices-Windows.zip
+
+  linux:
+    name: Linux (VST3 + Standalone)
+    # Building on the older Ubuntu LTS makes the binaries run on more distros.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libgl1-mesa-dev
+
+      - name: DSP self-test (no JUCE needed)
+        run: |
+          c++ -std=c++17 -O2 -ISource Tests/engine_render_test.cpp -o engine_test
+          mkdir -p test-out && cd test-out && ../engine_test
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package
+        run: |
+          out=Voices-Linux-x86_64
+          mkdir -p $out
+          cp -r build/Voices_artefacts/Release/VST3/Voices.vst3 $out/
+          cp -r "build/VoicesFX_artefacts/Release/VST3/Voices FX.vst3" $out/
+          cp build/Voices_artefacts/Release/Standalone/Voices $out/
+          cp packaging/INSTALL-Linux.txt $out/
+          cp LICENSE $out/LICENSE.txt
+          cp THIRD-PARTY-NOTICES.md $out/
+          cp docs/Voices-User-Manual.pdf $out/
+          tar czf $out.tar.gz $out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Voices-Linux
+          path: Voices-Linux-x86_64.tar.gz
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_version != '')
+    needs: [ windows, linux ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Name the downloads after the version
+        env:
+          TAG: ${{ inputs.release_version || github.ref_name }}
+        run: |
+          tag="${TAG}"
+          mv dist/Voices-Windows.zip "dist/Voices-${tag}-Windows-x64.zip"
+          mv dist/Voices-Linux-x86_64.tar.gz "dist/Voices-${tag}-Linux-x86_64.tar.gz"
+          cp docs/Voices-User-Manual.pdf "dist/Voices-${tag}-User-Manual.pdf"
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Voices ${{ inputs.release_version || github.ref_name }}
+          body_path: docs/RELEASE-NOTES.md
+          files: dist/*
