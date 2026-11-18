@@ -1,3 +1,14 @@
+## Voices 0.2.0 - MIDI learn
+
+**New: MIDI LEARN** (ported from Decu6000) - control Voices from your MIDI controller.
+- Click **MIDI LEARN** in the header, click any knob, switch or button row, move a knob or fader:
+  assigned. Every control shows its CC while learn mode is on.
+- Or right-click any knob > *Learn MIDI CC...* / *Clear MIDI CC*.
+- Right-click a control in learn mode to clear it; right-click the MIDI LEARN button to clear all.
+- Saved with your DAW project (not with patches). CC 64 stays the sustain pedal.
+
+---
+
 ## Voices 0.1.0 - first release
 
 Vocal synth, choir, vocoder, auto-tune and voice changer in one, in the Decu6000 look.

@@ -251,11 +251,29 @@ story += [P("5  The header", "h1"),
                  ["<b>Patch LCD</b>", "Shows the patch (a * means edited). Click it for the patch menu, arrows to step. "
                   "While you turn a knob it shows that knob's value."],
                  ["<b>VOICE IN</b>", "Input level of the voice. Voices FX also shows its latency. \"SIDE-CHAIN OFF\" "
-                  "means the instrument's side-chain isn't connected."]],
+                  "means the instrument's side-chain isn't connected."],
+                 ["<b>MIDI LEARN</b>", "Assigns the knobs and faders of a MIDI controller to Voices' controls "
+                  "(see below). Right-click it to clear every assignment."]],
                 [1.7 * inch, 4.8 * inch]),
           Spacer(1, 6),
           P("Double-click any knob to reset it (or right-click &gt; Reset). Drag the bottom-right corner to resize. "
             "The keyboard along the bottom plays C1 to C6.")]
+story += [PageBreak()]
+story += [P("MIDI learn", "h2"),
+          P("Play Voices from a MIDI controller's knobs and faders - it works the same as in Decu6000."),
+          *bullets(["Click <b>MIDI LEARN</b> in the header. Every knob, switch and button row gets a yellow outline; "
+                   "assigned ones show their CC number.",
+                   "Click a control - it says MOVE CC - then move a knob or fader on your controller. The LCD confirms, "
+                   "e.g. CHOIR SIZE &lt;- CC 21. Click the next control, and so on.",
+                   "Right-click a control to clear it. Click it again, click empty space or press <b>Esc</b> to cancel; "
+                   "press Esc again or click MIDI LEARN to leave learn mode.",
+                   "Without learn mode: right-click any knob &gt; <b>Learn MIDI CC...</b> (or <b>Clear MIDI CC</b>).",
+                   "Each control listens to one CC; learning it again moves it to the new CC."]),
+          shot("learn_view.png", caption="MIDI LEARN mode: RETUNE is on CC 74, the choir's ON switch on CC 80, "
+                                         "and the vocal synth's vowel is waiting for a CC."),
+          note("Assignments are saved with your DAW project or the Standalone's state, not with patches, so they "
+               "stay put when you change sounds. CC 64 is always the sustain pedal and CC 120-127 are never mapped.",
+               CYAN)]
 story += [PageBreak()]
 
 # 6
@@ -441,6 +459,8 @@ trouble = [
     ("Vocoder is silent", "It needs both a voice and a carrier: hold keys, or turn AUTO on. Check VOCODER LEVEL."),
     ("Synths don't play", "Make sure MIDI reaches the plug-in and the engine's ON button is lit."),
     ("Voices FX gets no MIDI", "Your DAW may not send MIDI to effects - use the Voices instrument with side-chain."),
+    ("A controller knob does nothing", "Assign it with MIDI LEARN first, and make sure your DAW passes CCs to the plug-in. "
+                                       "The sustain pedal (CC 64) can't be assigned."),
     ("Windows says the app is unsafe", "Click More info &gt; Run anyway. The app isn't signed with a paid certificate."),
 ]
 story += [table([["PROBLEM", "WHAT TO DO"]] + [[f"<b>{a}</b>", b] for a, b in trouble], [2.1 * inch, 4.4 * inch])]

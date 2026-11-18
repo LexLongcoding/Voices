@@ -19,6 +19,7 @@ namespace Theme
     const juce::Colour cyan    { 0xff3de8ff };
     const juce::Colour lcdBg   { 0xff0a0820 };
     const juce::Colour yellow  { 0xffffe14d };   // highlights
+    const juce::Colour learn   { 0xffffe14d };   // MIDI learn (as in Decu6000)
 
     // Fixed design canvas; the editor scales it to the window size.
     constexpr int designWidth  = 1440;
