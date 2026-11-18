@@ -138,12 +138,25 @@ int VoicesAudioProcessor::paramIndexForId (const juce::String& id)
     return 0;
 }
 
+int VoicesAudioProcessor::findParamIndex (const juce::String& id)
+{
+    for (int i = 0; i < Params::numParams; ++i)
+        if (id == Params::specs[i].id)
+            return i;
+    return -1;
+}
+
 VoicesAudioProcessor::VoicesAudioProcessor()
     : AudioProcessor (makeBuses()),
       apvts (*this, nullptr, "VOICES", createLayout())
 {
     for (int i = 0; i < Params::numParams; ++i)
+    {
         raw[static_cast<size_t> (i)] = apvts.getRawParameterValue (Params::specs[i].id);
+        paramList[static_cast<size_t> (i)] = apvts.getParameter (Params::specs[i].id);
+    }
+    for (auto& c : ccToParam)
+        c.store (-1);
 
     auto I = [] (const char* id) { return paramIndexForId (id); };
     ix = { I ("master_level"), I ("master_voicetype"), I ("voice_level"),
@@ -258,7 +271,6 @@ void VoicesAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
-    updateSettings();
 
     // the on-screen keyboard adds its notes to the incoming MIDI
     keyboardState.processNextMidiBuffer (midi, 0, n, true);
@@ -318,7 +330,10 @@ void VoicesAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             keyDown.fill (false); sustained.fill (false);
             events.push_back ({ pos, E::allOff, 0, 0.0f });
         }
+        else if (m.isController())   // (after the pedal and channel-mode checks above)
+            handleController (m.getControllerNumber(), m.getControllerValue());
     }
+    updateSettings();   // after MIDI, so learned CCs apply in this block
 
     VoicesEngine::Transport tp;
     if (auto* ph = getPlayHead())
@@ -351,6 +366,92 @@ void VoicesAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         readout.bands[static_cast<size_t> (b)].store (voc.getBandLevel (b), std::memory_order_relaxed);
 }
 
+//==============================================================================
+// MIDI learn
+void VoicesAudioProcessor::handleController (int cc, int value)
+{
+    if (cc < 0 || cc >= numCcs || cc == sustainCc)
+        return;
+
+    // the first CC after a control is armed gets assigned to it
+    const int armed = learnCcParam.exchange (-1);
+    if (armed >= 0 && armed < Params::numParams)
+    {
+        for (auto& c : ccToParam)                  // a control listens to one CC
+            if (c.load() == armed) c.store (-1);
+        ccToParam[static_cast<size_t> (cc)].store (armed);
+        lastLearnedCc.store (cc);
+        ccLearnCount.fetch_add (1);
+    }
+
+    const int idx = ccToParam[static_cast<size_t> (cc)].load();
+    if (idx >= 0 && idx < Params::numParams)
+    {
+        auto* p = paramList[static_cast<size_t> (idx)];
+        const float v = static_cast<float> (juce::jlimit (0, 127, value)) / 127.0f;
+        if (std::abs (p->getValue() - v) > 1.0e-6f)
+            p->setValueNotifyingHost (v);
+    }
+}
+
+int VoicesAudioProcessor::ccForParam (int paramIndex) const
+{
+    for (int cc = 0; cc < numCcs; ++cc)
+        if (ccToParam[static_cast<size_t> (cc)].load() == paramIndex)
+            return cc;
+    return -1;
+}
+
+int VoicesAudioProcessor::paramForCc (int cc) const
+{
+    return cc >= 0 && cc < numCcs ? ccToParam[static_cast<size_t> (cc)].load() : -1;
+}
+
+void VoicesAudioProcessor::clearCcForParam (int paramIndex)
+{
+    for (auto& c : ccToParam)
+        if (c.load() == paramIndex) c.store (-1);
+}
+
+void VoicesAudioProcessor::clearAllCcs()
+{
+    for (auto& c : ccToParam) c.store (-1);
+}
+
+int VoicesAudioProcessor::getNumMappedCcs() const
+{
+    int count = 0;
+    for (const auto& c : ccToParam)
+        if (c.load() >= 0) ++count;
+    return count;
+}
+
+juce::String VoicesAudioProcessor::ccMapToString() const
+{
+    juce::StringArray items;
+    for (int cc = 0; cc < numCcs; ++cc)
+    {
+        const int idx = ccToParam[static_cast<size_t> (cc)].load();
+        if (idx >= 0 && idx < Params::numParams)
+            items.add (juce::String (cc) + "=" + Params::specs[idx].id);
+    }
+    return items.joinIntoString (",");
+}
+
+void VoicesAudioProcessor::ccMapFromString (const juce::String& text)
+{
+    clearAllCcs();
+    for (const auto& item : juce::StringArray::fromTokens (text, ",", ""))
+    {
+        if (! item.containsChar ('='))
+            continue;
+        const int cc = item.upToFirstOccurrenceOf ("=", false, false).trim().getIntValue();
+        const int idx = findParamIndex (item.fromFirstOccurrenceOf ("=", false, false).trim());
+        if (cc >= 0 && cc < numCcs && cc != sustainCc && idx >= 0)
+            ccToParam[static_cast<size_t> (cc)].store (idx);   // unknown IDs (renamed params) are dropped
+    }
+}
+
 juce::AudioProcessorEditor* VoicesAudioProcessor::createEditor()
 {
     return new VoicesAudioProcessorEditor (*this);
@@ -361,6 +462,7 @@ void VoicesAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty (uiScaleProperty, uiScale, nullptr);
+    state.setProperty (ccMapProperty, ccMapToString(), nullptr);
     state.setProperty (patchNameProperty, patches.getCurrentName(), nullptr);
     state.setProperty (patchModifiedProperty, patches.isModified(), nullptr);
     if (auto xml = state.createXml())
@@ -374,9 +476,10 @@ void VoicesAudioProcessor::setStateInformation (const void* data, int sizeInByte
         {
             auto state = juce::ValueTree::fromXml (*xml);
             uiScale = juce::jlimit (0.5f, 1.25f, static_cast<float> (state.getProperty (uiScaleProperty, 0.8f)));
+            ccMapFromString (state.getProperty (ccMapProperty).toString());
             const auto patchName = state.getProperty (patchNameProperty).toString();
             const bool patchModified = state.getProperty (patchModifiedProperty, patchName.isEmpty());
-            for (auto* p : { uiScaleProperty, patchNameProperty, patchModifiedProperty })
+            for (auto* p : { uiScaleProperty, ccMapProperty, patchNameProperty, patchModifiedProperty })
                 state.removeProperty (p, nullptr);
             apvts.replaceState (state);
             patches.restoreSession (patchName, patchModified);   // after replaceState, which marks "modified"

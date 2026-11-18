@@ -8,13 +8,15 @@
 #include <memory>
 #include <vector>
 
-// Shared by every widget: the processor plus a callback into the header LCD.
+// Shared by every widget: the processor plus callbacks into the editor.
 struct UiContext
 {
     explicit UiContext (VoicesAudioProcessor& p) : proc (p) {}
 
     VoicesAudioProcessor& proc;
+    bool learnMode = false;
     std::function<void (const juce::String&, juce::Colour)> setLcd;
+    std::function<void (int paramIndex)> armLearn;   // from a knob's right-click menu
 
     juce::RangedAudioParameter* param (const char* id) const { return proc.apvts.getParameter (id); }
     float value (const char* id) const { return proc.apvts.getRawParameterValue (id)->load(); }
@@ -23,10 +25,24 @@ struct UiContext
 
 juce::String groupTitleFor (const juce::String& paramId);
 juce::String noteNameOf (int midiNote);   // "A3" (middle C = C3, as in Decu6000)
+juce::String paramTitleOf (int paramIndex);   // "CHOIR SIZE"
+
+// Any control bound to one parameter; MIDI LEARN mode finds these in the editor.
+class LearnableControl
+{
+public:
+    explicit LearnableControl (const char* paramId) : learnParam (VoicesAudioProcessor::paramIndexForId (paramId)) {}
+    virtual ~LearnableControl() = default;
+    int getLearnParam() const { return learnParam; }
+
+private:
+    const int learnParam;
+};
 
 //==============================================================================
-// Parameter knob with its label underneath (double-click / right-click to reset).
-class Knob : public juce::Component
+// Parameter knob with its label underneath. Double-click resets; right-click for
+// reset and MIDI CC learn.
+class Knob : public juce::Component, public LearnableControl
 {
 public:
     Knob (UiContext&, const char* paramId, juce::Colour accent, juce::String labelOverride = {});
@@ -47,7 +63,7 @@ private:
 
 //==============================================================================
 // On/off button bound to a toggle parameter.
-class ParamToggle : public juce::TextButton
+class ParamToggle : public juce::TextButton, public LearnableControl
 {
 public:
     ParamToggle (UiContext&, const char* paramId, juce::String buttonText, juce::Colour accent);
@@ -58,7 +74,7 @@ private:
 
 // A row of radio buttons bound to a choice parameter (index = value).
 // `values` lets buttons map to arbitrary parameter values (default 0, 1, 2...).
-class ChoiceButtons : public juce::Component
+class ChoiceButtons : public juce::Component, public LearnableControl
 {
 public:
     ChoiceButtons (UiContext&, const char* paramId, juce::StringArray labels, juce::Colour accent,
@@ -77,7 +93,7 @@ private:
 };
 
 // Drop-down list bound to a choice parameter.
-class ChoiceCombo : public juce::ComboBox
+class ChoiceCombo : public juce::ComboBox, public LearnableControl
 {
 public:
     ChoiceCombo (UiContext&, const char* paramId, juce::Colour accent);

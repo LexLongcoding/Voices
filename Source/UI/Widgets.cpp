@@ -19,6 +19,12 @@ juce::String noteNameOf (int note)
     return juce::MidiMessage::getMidiNoteName (note, true, true, 3);
 }
 
+juce::String paramTitleOf (int paramIndex)
+{
+    const auto& s = Params::specs[juce::jlimit (0, Params::numParams - 1, paramIndex)];
+    return groupTitleFor (s.id) + " " + s.knob;
+}
+
 void UiContext::showValue (const char* id) const
 {
     if (setLcd == nullptr) return;
@@ -31,7 +37,7 @@ void UiContext::showValue (const char* id) const
 
 //==============================================================================
 Knob::Knob (UiContext& c, const char* paramId, juce::Colour accent, juce::String labelOverride)
-    : ctx (c), id (paramId)
+    : LearnableControl (paramId), ctx (c), id (paramId)
 {
     const auto& spec = Params::specs[VoicesAudioProcessor::paramIndexForId (paramId)];
     label = labelOverride.isNotEmpty() ? labelOverride : juce::String (spec.knob);
@@ -55,14 +61,26 @@ void Knob::mouseDown (const juce::MouseEvent& e)
 {
     if (! e.mods.isPopupMenu())
         return;
+    const int param = getLearnParam();
+    const int cc = ctx.proc.ccForParam (param);
     juce::PopupMenu m;
-    m.addSectionHeader (Params::specs[VoicesAudioProcessor::paramIndexForId (id)].name);
-    m.addItem (1, "Reset to default");
+    m.addSectionHeader (Params::specs[param].name);
+    m.addItem (1, "Learn MIDI CC...");
+    m.addItem (2, cc >= 0 ? "Clear MIDI CC (CC " + juce::String (cc) + ")" : juce::String ("Clear MIDI CC"), cc >= 0);
+    m.addItem (3, "Reset to default");
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&slider),
                      [safe = juce::Component::SafePointer<Knob> (this)] (int r)
                      {
-                         if (safe != nullptr && r == 1)
-                             safe->slider.setValue (safe->def, juce::sendNotificationSync);
+                         if (safe == nullptr) return;
+                         auto& c = safe->ctx;
+                         const int p = safe->getLearnParam();
+                         if (r == 1 && c.armLearn) c.armLearn (p);
+                         if (r == 2)
+                         {
+                             c.proc.clearCcForParam (p);
+                             if (c.setLcd) c.setLcd (paramTitleOf (p) + "  //  MIDI CC CLEARED", Theme::learn);
+                         }
+                         if (r == 3) safe->slider.setValue (safe->def, juce::sendNotificationSync);
                      });
 }
 
@@ -86,7 +104,7 @@ void Knob::paint (juce::Graphics& g)
 
 //==============================================================================
 ParamToggle::ParamToggle (UiContext& ctx, const char* paramId, juce::String buttonText, juce::Colour accent)
-    : juce::TextButton (std::move (buttonText))
+    : juce::TextButton (std::move (buttonText)), LearnableControl (paramId)
 {
     setClickingTogglesState (true);
     setColour (juce::TextButton::buttonOnColourId, accent);
@@ -98,7 +116,7 @@ ParamToggle::ParamToggle (UiContext& ctx, const char* paramId, juce::String butt
 //==============================================================================
 ChoiceButtons::ChoiceButtons (UiContext& c, const char* paramId, juce::StringArray labels, juce::Colour accent,
                               std::vector<float> vals)
-    : ctx (c), id (paramId), values (std::move (vals))
+    : LearnableControl (paramId), ctx (c), id (paramId), values (std::move (vals))
 {
     if (values.empty())
         for (int i = 0; i < labels.size(); ++i) values.push_back (static_cast<float> (i));
@@ -146,7 +164,8 @@ void ChoiceButtons::resized()
 }
 
 //==============================================================================
-ChoiceCombo::ChoiceCombo (UiContext& c, const char* paramId, juce::Colour accent) : ctx (c), id (paramId)
+ChoiceCombo::ChoiceCombo (UiContext& c, const char* paramId, juce::Colour accent)
+    : LearnableControl (paramId), ctx (c), id (paramId)
 {
     const auto& spec = Params::specs[VoicesAudioProcessor::paramIndexForId (id)];
     int count = 0;

@@ -55,10 +55,29 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     static int paramIndexForId (const juce::String& id);
+    static int findParamIndex (const juce::String& id);   // -1 if unknown (no assert)
 
     juce::AudioProcessorValueTreeState apvts;
     PatchManager patches { apvts };
     juce::MidiKeyboardState keyboardState;   // the on-screen keyboard
+
+    //==============================================================================
+    // MIDI learn (CC -> parameter), ported from Decu6000. Parameters are addressed by
+    // their index in Params::specs. Lock-free: armed / cleared from the message thread,
+    // applied on the audio thread. Saved with the session, not with patches.
+    static constexpr int numCcs = 120;    // CC 120-127 are channel-mode messages, never mapped
+    static constexpr int sustainCc = 64;  // stays the sustain pedal, never mapped
+
+    void armCcLearn (int paramIndex)    { learnCcParam.store (paramIndex); }   // -1 cancels
+    void cancelLearning()               { learnCcParam.store (-1); }
+    int  getArmedCcParam() const        { return learnCcParam.load(); }
+    int  getCcLearnCount() const        { return ccLearnCount.load(); }
+    int  getLastLearnedCc() const       { return lastLearnedCc.load(); }
+    int  ccForParam (int paramIndex) const;          // -1 if none
+    int  paramForCc (int cc) const;                  // -1 if none
+    void clearCcForParam (int paramIndex);
+    void clearAllCcs();
+    int  getNumMappedCcs() const;
 
     //==============================================================================
     // Read-outs for the editor (lock-free).
@@ -84,8 +103,12 @@ private:
     static BusesProperties makeBuses();
     float pv (int index) const { return raw[static_cast<size_t> (index)]->load(); }
     void updateSettings();
+    void handleController (int cc, int value);
+    juce::String ccMapToString() const;
+    void ccMapFromString (const juce::String&);
 
     std::array<std::atomic<float>*, static_cast<size_t> (Params::numParams)> raw {};
+    std::array<juce::RangedAudioParameter*, static_cast<size_t> (Params::numParams)> paramList {};
 
     struct Ix
     {
@@ -105,6 +128,10 @@ private:
     std::array<bool, 128> keyDown {}, sustained {};
     bool sustainPedal = false;
 
+    std::atomic<int> learnCcParam { -1 }, ccLearnCount { 0 }, lastLearnedCc { -1 };
+    std::array<std::atomic<int>, numCcs> ccToParam;
+
+    static constexpr const char* ccMapProperty = "ccMap";
     static constexpr const char* uiScaleProperty = "uiScale";
     static constexpr const char* patchNameProperty = "patchName";
     static constexpr const char* patchModifiedProperty = "patchModified";

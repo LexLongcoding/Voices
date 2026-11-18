@@ -61,6 +61,16 @@ repeats, a lush 8-line **REVERB**, master level with soft limiting, output meter
 The **keyboard** along the bottom plays the synths (C1-C6) - handy in the Standalone.
 Double-click any knob to reset it; the window resizes from the bottom-right corner.
 
+**MIDI LEARN** - control Voices from the knobs and faders of a MIDI controller (same as Decu6000).
+Click **MIDI LEARN** in the header: every control that can be learned gets an outline with its CC.
+Click a knob, switch or button row, then move a knob or fader on your controller - done. Right-click
+a control to clear it; click it again or press Esc to cancel; Esc or the button again leaves learn
+mode. Outside learn mode, right-click any knob > *Learn MIDI CC...* does the same for one knob.
+Right-click the MIDI LEARN button to clear every assignment. Assignments are saved with your DAW
+project (not with patches), CC 64 stays the sustain pedal, and CC 120-127 are never mapped.
+
+![MIDI learn mode](docs/images/learn_view.png)
+
 ## Hearing it live
 - **Standalone:** Options -> Audio/MIDI Settings, pick your mic and (optionally) a MIDI keyboard.
   Use headphones, then click *Settings...* on the yellow "Audio input is muted" bar and untick

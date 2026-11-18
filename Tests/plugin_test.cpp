@@ -3,7 +3,7 @@
 //
 // Plug-in level tests (built with -DVOICES_BUILD_TESTS=ON):
 //   * the processor: side-chain voice + MIDI, every factory patch, state save / restore,
-//     parameter text, sustain pedal, sample-rate / block-size changes
+//     parameter text, sustain pedal, MIDI learn, sample-rate / block-size changes
 //   * the editor: renders screenshots while audio is running (docs/images)
 //   * the built VST3s: loaded the way a DAW loads them, then played
 //
@@ -192,6 +192,67 @@ int main (int argc, char** argv)
         for (int b = 0; b < 300; ++b) { juce::MidiBuffer none; buf.clear(); proc.processBlock (buf, none); }
         check (buf.getMagnitude (0, 0, BS) < 0.002f, "pedal up releases it");
 
+        // MIDI learn: arm a control, the next CC is assigned to it and then drives it
+        {
+            auto sendCc = [&] (int cc, int value)
+            {
+                juce::MidiBuffer mm;
+                mm.addEvent (juce::MidiMessage::controllerEvent (1, cc, value), 0);
+                buf.clear(); proc.processBlock (buf, mm);
+            };
+            auto value = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+            const int size = VoicesAudioProcessor::paramIndexForId ("choir_size");
+            const int scale = VoicesAudioProcessor::paramIndexForId ("tune_scale");
+            const int power = VoicesAudioProcessor::paramIndexForId ("vsyn_on");
+
+            const float before = proc.apvts.getParameter ("choir_size")->getValue();
+            sendCc (21, before > 0.5f ? 0 : 127);
+            check (std::abs (proc.apvts.getParameter ("choir_size")->getValue() - before) < 1.0e-6f && proc.paramForCc (21) < 0, "unmapped CC does nothing");
+            const int learned = proc.getCcLearnCount();
+            proc.armCcLearn (size);
+            sendCc (21, 127);
+            check (proc.ccForParam (size) == 21 && proc.getArmedCcParam() < 0 && proc.getCcLearnCount() == learned + 1,
+                   "armed knob learns the next CC (CC 21 -> CHOIR SIZE)");
+            check (std::abs (proc.apvts.getParameter ("choir_size")->getValue() - 1.0f) < 1.0e-5f, "CC 127 sets the knob to max");
+            sendCc (21, 0);
+            check (proc.apvts.getParameter ("choir_size")->getValue() < 1.0e-5f, "CC 0 sets it to min");
+
+            proc.armCcLearn (scale);
+            sendCc (22, 127);
+            check (juce::roundToInt (value ("tune_scale")) == juce::roundToInt (Params::specs[scale].max), "CC drives a choice parameter (snaps to steps)");
+            proc.armCcLearn (power);
+            sendCc (23, 0);
+            check (value ("vsyn_on") < 0.5f, "CC drives an on/off switch (0 = OFF)");
+            sendCc (23, 127);
+            check (value ("vsyn_on") >= 0.5f, "... and 127 = ON");
+
+            proc.armCcLearn (size);
+            sendCc (24, 64);
+            check (proc.ccForParam (size) == 24 && proc.paramForCc (21) < 0, "re-learning moves the knob to the new CC");
+
+            proc.armCcLearn (size);
+            sendCc (64, 127);
+            check (proc.ccForParam (size) == 24 && proc.getArmedCcParam() == size, "sustain pedal (CC 64) is never learned");
+            sendCc (64, 0);
+            proc.cancelLearning();
+            check (proc.getArmedCcParam() < 0, "learning can be cancelled");
+
+            juce::MemoryBlock st;
+            proc.getStateInformation (st);
+            VoicesAudioProcessor restored;
+            restored.setStateInformation (st.getData(), static_cast<int> (st.getSize()));
+            check (restored.ccForParam (size) == 24 && restored.ccForParam (scale) == 22 && restored.ccForParam (power) == 23
+                       && restored.getNumMappedCcs() == 3,
+                   "CC assignments are saved with the session");
+            check (restored.apvts.state.getProperty ("ccMap").isVoid(), "CC map is not left in the parameter tree");
+
+            proc.clearCcForParam (scale);
+            check (proc.ccForParam (scale) < 0 && proc.getNumMappedCcs() == 2, "clear one assignment");
+            proc.clearAllCcs();
+            check (proc.getNumMappedCcs() == 0, "clear all assignments");
+            proc.patches.load (0);
+        }
+
         // other sample rates / huge blocks
         proc.prepareToPlay (96000.0, 2048);
         juce::AudioBuffer<float> big (2, 2048);
@@ -228,6 +289,43 @@ int main (int argc, char** argv)
         setParam (proc, proc, "chg_on", 1.0f);
         run (proc, &singer, 3.0, { 57, 60, 64 }, 0, tick, false);
         check (savePng (*editor, shots.getChildFile ("arp_view.png")), "arp_view.png (ANGEL ARP)");
+
+        // MIDI LEARN mode: a few assignments, one control armed
+        {
+            juce::TextButton* learnButton = nullptr;
+            std::function<void (juce::Component&)> find = [&] (juce::Component& c)
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (auto* b = dynamic_cast<juce::TextButton*> (ch); b != nullptr && b->getButtonText() == "MIDI LEARN")
+                        learnButton = b;
+                    find (*ch);
+                }
+            };
+            find (*editor);
+            check (learnButton != nullptr, "header has a MIDI LEARN button");
+            if (learnButton != nullptr)
+            {
+                proc.armCcLearn (VoicesAudioProcessor::paramIndexForId ("tune_retune"));
+                juce::MidiBuffer mm; mm.addEvent (juce::MidiMessage::controllerEvent (1, 74, 20), 0);
+                juce::AudioBuffer<float> b (proc.getTotalNumOutputChannels() + proc.getTotalNumInputChannels(), BS);
+                b.clear(); proc.processBlock (b, mm);
+                proc.armCcLearn (VoicesAudioProcessor::paramIndexForId ("choir_on"));
+                mm.clear(); mm.addEvent (juce::MidiMessage::controllerEvent (1, 80, 127), 0);
+                b.clear(); proc.processBlock (b, mm);
+
+                learnButton->triggerClick();
+                pump (60);
+                check (learnButton->getToggleState(), "MIDI LEARN mode turns on");
+                proc.armCcLearn (VoicesAudioProcessor::paramIndexForId ("vsyn_vowel"));
+                run (proc, &singer, 0.5, { 57, 60, 64 }, 0, tick, false);
+                check (savePng (*editor, shots.getChildFile ("learn_view.png")), "learn_view.png (MIDI LEARN mode)");
+                learnButton->triggerClick();
+                pump (60);
+                check (! learnButton->getToggleState() && proc.getArmedCcParam() < 0, "leaving learn mode disarms");
+                proc.clearAllCcs();
+            }
+        }
 
         editor->setSize (Theme::designWidth / 2, Theme::designHeight / 2);
         check (editor->getWidth() == Theme::designWidth / 2, "editor scales down to 50%");

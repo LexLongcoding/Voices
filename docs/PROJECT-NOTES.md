@@ -1,6 +1,6 @@
 # Voices - project notes (for contributors and for resuming work)
 
-Last updated: 2026-11-18, version 0.1.0. License: AGPL-3.0-or-later, copyright LexLongcoding
+Last updated: 2026-11-18, version 0.2.0. License: AGPL-3.0-or-later, copyright LexLongcoding
 (JUCE used under its AGPLv3 option). Sister project: Decu6000 (same look, fonts, patch system).
 
 ## What it is
@@ -28,13 +28,20 @@ chorus / reverb / delay; hear results live before recording; keep the Decu6000 f
 - **Vocoder AUTO**: with no keys held the carrier follows the *corrected* sung pitch.
 - **Patches**: same PatchManager as Decu6000 (factory in code + XML user files), extension
   `.voicespatch`, folder "Voices Synth". Not exposed as host programs (Cubase program-0 issue).
+- **MIDI learn** (0.2.0, ported from Decu6000): lock-free `ccToParam[120]` table in the processor,
+  armed from the editor, the next CC is learned on the audio thread and then drives the parameter
+  (`setValueNotifyingHost`, 0-127 -> 0-1, so choices / toggles snap). Saved in the session state
+  (`ccMap` = "cc=paramId,..."), not in patches; unknown IDs are dropped on load. CC 64 is excluded
+  (sustain), CC 120-127 too (channel mode). UI: header MIDI LEARN button + `LearnOverlay`, which finds
+  every `LearnableControl` (Knob, ParamToggle, ChoiceButtons, ChoiceCombo) in the editor by itself,
+  so new controls are learnable without extra code. Knobs also have Learn / Clear in their menu.
 - **Fonts**: the Decu Display (Orbitron-derived) + Share Tech Mono files, embedded via BinaryData.
 
 ## Source map
 | File | Role |
 |---|---|
 | `Source/Parameters.h` | Table of all parameters (id, name, label, range, skew, default, unit, choice labels) |
-| `Source/PluginProcessor.*` | Buses per build, MIDI (+ sustain), transport, read-outs for the editor, state |
+| `Source/PluginProcessor.*` | Buses per build, MIDI (+ sustain, CC learn map), transport, read-outs for the editor, state |
 | `Source/DSP/VoicesEngine.h` | Whole signal path: voice path, MIDI/arp routing, synths, FX, master |
 | `Source/DSP/PitchDetector.h` | YIN pitch tracker |
 | `Source/DSP/PitchShifter.h` | TD-PSOLA with formant control |
@@ -48,7 +55,7 @@ chorus / reverb / delay; hear results live before recording; keep the Decu6000 f
 | `Source/UI/Theme.*` | Colours, fonts, knob drawing (from Decu6000) |
 | `Source/UI/Widgets.*` | Knob, toggles, choice buttons/combos, meters, Panel base |
 | `Source/UI/Panels.*` | The seven panels, pitch display, keyboard strip |
-| `Source/PluginEditor.*` | Header (voice type, patch LCD, input badge), 1440x900 scaling canvas |
+| `Source/PluginEditor.*` | Header (voice type, patch LCD, input badge, MIDI LEARN), learn overlay, 1440x900 scaling canvas |
 | `Tests/engine_render_test.cpp` | DSP test without JUCE, writes WAVs |
 | `Tests/plugin_test.cpp` | Processor, patches, state, editor screenshots, VST3 host test |
 | `docs/manual/make_manual.py` | Builds `docs/Voices-User-Manual.pdf` (reads Parameters.h) |
@@ -61,4 +68,4 @@ chorus / reverb / delay; hear results live before recording; keep the Decu6000 f
 ## Possible next steps
 - Try both plug-ins in a real DAW with a microphone (FL Studio / Ableton / Reaper).
 - Optional: harmonizer (choir follows the sung pitch), formant-preserving octave doubler,
-  MIDI learn (port from Decu6000), macOS build in CI.
+  macOS build in CI.
