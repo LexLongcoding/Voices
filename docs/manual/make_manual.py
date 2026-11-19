@@ -241,6 +241,33 @@ story += [P("4  Routing in your DAW", "h1"),
                "<b>Voices</b> instrument and pick the vocal track in its side-chain (Sidechain section of the device).",
                CYAN)]
 
+def steps(items): return [Paragraph(t, S["bul"], bulletText=f"{n}.") for n, t in enumerate(items, 1)]
+
+story += [P("Step by step: live vocoder with the Voices instrument", "h2"),
+          P("Play chords on a MIDI keyboard and sing into your mic, with the mic feeding Voices' side-chain. "
+            "Menu names differ a little between DAWs."),
+          *steps(["Add an <b>instrument track</b> with Voices on it, and an <b>audio track</b> for your microphone "
+                  "(the mic track).",
+                  "Make the mic track Voices' <b>side-chain input</b>. You set this in your DAW, not inside Voices: look "
+                  "for the side-chain selector in the plug-in window's header or in the instrument track's routing. "
+                  "When it's connected, <b>VOICE IN</b> in Voices' header moves as you sing (SIDE-CHAIN OFF means it "
+                  "isn't connected yet).",
+                  "Turn <b>monitoring on</b> (or record-arm with monitoring) on <b>both</b> tracks, so you hear the "
+                  "vocoder live. Use headphones to avoid feedback.",
+                  "Switch <b>VOCODER</b> on, hold a chord and sing."]),
+          P("Shaping what you hear", "h3"),
+          *bullets(["<b>No dry voice:</b> set the mic track's output to <b>No Bus</b> (None / no output). The side-chain "
+                    "still feeds Voices, but the unprocessed voice no longer reaches your speakers, live or on playback.",
+                    "<b>Vocoder only:</b> turn <b>VOICE</b> (in the AUTO-TUNE panel) all the way down. This removes "
+                    "Voices' own copy of your voice and leaves the vocoder, plus any synth engines that are on."]),
+          P("Playing back a recording", "h3"),
+          *bullets(["Record your vocal on the mic track and your chords as MIDI on the Voices track.",
+                    "For playback, turn the mic track's <b>monitoring off</b>. While it's on, most DAWs pass the live "
+                    "mic instead of the recorded take, so Voices would vocode the mic, not your recording.",
+                    "Voices processes the take again on every playback, so you can keep changing the sound. Bounce or "
+                    "freeze the Voices track when you want the result as audio."]),
+          PageBreak()]
+
 # 5
 story += [P("5  The header", "h1"),
           shot("main_view.png", caption="The Voices editor (Standalone). Top row: the voice-input engines. "
